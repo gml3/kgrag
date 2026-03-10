@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 数据目录
+data/input/*
+data/output/*
+!data/input/.gitkeep
+!data/output/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# 环境
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

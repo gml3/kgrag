@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kgrag"
+version = "0.1.0"
+description = "KGRAG — 知识图谱增强检索生成系统"
+readme = "Readme.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    # TODO: 添加具体依赖版本
+    # "fastapi",
+    # "uvicorn",
+    # "pymilvus",
+    # "pyarrow",
+    # "networkx",
+    # "pyvis",
+    # "graspologic",
+    # "tiktoken",
+    # "pydantic",
+    # "openai",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+kgrag = "cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["kg_construct*", "chat*", "common*", "cli*"]
