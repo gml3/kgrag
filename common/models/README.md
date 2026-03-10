@@ -12,7 +12,6 @@
 | **Relationship** | id, source, target, description, weight, rank | 关系抽取 |
 | **Community** | id, level, entity_ids, relationship_ids, parent, children | 社区发现 |
 | **CommunityReport** | id, community_id, title, summary, full_content, rank | 社区报告 |
-| **Covariate** | id, subject_id, covariate_type, description, status | 协变量（可选） |
 
 ## 预期文件
 
@@ -24,6 +23,5 @@ models/
 ├── text_unit.py
 ├── entity.py
 ├── relationship.py
-├── community.py
-└── covariate.py
+└── community.py
 ```
