@@ -19,3 +19,5 @@ class MysqlConfig:
     
     database: str = "db_knowledge_kg"
     """数据库名"""
+
+    

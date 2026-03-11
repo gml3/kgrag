@@ -20,14 +20,13 @@ from kg_construct.graph_finalizer import finalize_graph
 from kg_construct.community_detector import create_communities
 from kg_construct.report_generator import create_community_reports
 from kg_construct.embedding_generator import generate_and_store_embeddings
-from kgrag.common.storage.storage_helper import save_parquet
+from common.storage.mysql_storage import MysqlStorage
 
 logger = logging.getLogger(__name__)
 
 
 async def run_pipeline(
     input_dir: str,
-    output_dir: str,
     llm_config: ChatModelConfig | None = None,
     embedding_config: EmbeddingModelConfig | None = None,
     chunk_size: int = 300,
@@ -35,12 +34,12 @@ async def run_pipeline(
     entity_types: list[str] | None = None,
     community_max_levels: int = 3,
     milvus_config: MilvusConfig | None = None,
+    mysql_config: MysqlConfig | None = None,
 ) -> dict:
     """执行完整的知识图谱构建 Pipeline。
 
     Args:
         input_dir: 原始文档输入目录
-        output_dir: Parquet 输出目录
         llm_config: Chat LLM 配置（None 将使用默认值）
         embedding_config: Embedding 配置（None 将使用默认值）
         chunk_size: 分块 token 数
@@ -48,6 +47,7 @@ async def run_pipeline(
         entity_types: 实体类型列表
         community_max_levels: 社区最大层级
         milvus_config: Milvus 配置（None 将使用默认值）
+        mysql_config: Mysql 配置（None 将使用默认值）
 
     Returns:
         包含各阶段统计信息的 dict
@@ -58,9 +58,14 @@ async def run_pipeline(
         embedding_config = EmbeddingModelConfig()
     if milvus_config is None:
         milvus_config = MilvusConfig()
+    if mysql_config is None:
+        mysql_config = MysqlConfig()
 
     milvus_uri = f"http://{milvus_config.host}:{milvus_config.port}"
     milvus_db_name = milvus_config.db_name
+
+    # 初始化 MySQL 存储服务
+    mysql_storage = MysqlStorage(mysql_config)
 
     total_start = time.time()
     stats = {}
@@ -72,7 +77,7 @@ async def run_pipeline(
     logger.info("Step 1/8: 文档加载")
     t0 = time.time()
     documents = load_documents(input_dir)
-    save_parquet(documents, "documents.parquet", output_dir)
+    mysql_storage.save(documents, "documents")
     stats["documents"] = len(documents)
     logger.info(f"Step 1 完成 ({time.time() - t0:.1f}s)")
 
@@ -129,9 +134,9 @@ async def run_pipeline(
     entities, relationships, text_units = finalize_graph(
         entities, relationships, text_units
     )
-    save_parquet(entities, "entities.parquet", output_dir)
-    save_parquet(relationships, "relationships.parquet", output_dir)
-    save_parquet(text_units, "text_units.parquet", output_dir)
+    mysql_storage.save(entities, "entities")
+    mysql_storage.save(relationships, "relationships")
+    mysql_storage.save(text_units, "text_units")
     logger.info(f"Step 5 完成 ({time.time() - t0:.1f}s)")
 
     # ==========================================
@@ -143,7 +148,7 @@ async def run_pipeline(
     communities = create_communities(
         entities, relationships, max_levels=community_max_levels
     )
-    save_parquet(communities, "communities.parquet", output_dir)
+    mysql_storage.save(communities, "communities")
     stats["communities"] = len(communities)
     logger.info(f"Step 6 完成 ({time.time() - t0:.1f}s)")
 
@@ -156,7 +161,7 @@ async def run_pipeline(
     community_reports = await create_community_reports(
         communities, entities, relationships, llm_config
     )
-    save_parquet(community_reports, "community_reports.parquet", output_dir)
+    mysql_storage.save(community_reports, "community_reports")
     stats["community_reports"] = len(community_reports)
     logger.info(f"Step 7 完成 ({time.time() - t0:.1f}s)")
 
@@ -184,12 +189,11 @@ async def run_pipeline(
 
 def run(
     input_dir: str = "./data/input",
-    output_dir: str = "./data/output",
     **kwargs,
 ) -> dict:
     """同步入口，内部使用 asyncio.run 执行 Pipeline。"""
     return asyncio.run(
-        run_pipeline(input_dir=input_dir, output_dir=output_dir, **kwargs)
+        run_pipeline(input_dir=input_dir, **kwargs)
     )
 
 
