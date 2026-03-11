@@ -1,8 +1,14 @@
 import pandas as pd
 import sys
 from unittest.mock import MagicMock
-sys.modules['litellm'] = MagicMock()
 sys.modules['common.config.models.chat_model_config'] = MagicMock()
+sys.modules['litellm'] = MagicMock()
+
+# 先行 mock Milvus 库及请求库以防止后续 LocalSearch 导入报错
+sys.modules['pymilvus'] = MagicMock()
+mock_milvus_client_class = MagicMock()
+sys.modules['pymilvus'].MilvusClient = mock_milvus_client_class
+sys.modules['common.embeddings.client'] = MagicMock()
 
 from chat.context_builder import ContextBuilder
 from chat.search.local_search import LocalSearch
@@ -60,9 +66,21 @@ def test_context_builder():
     assert "Alice and Bob went to the park." in context
 
 def test_local_search():
-    def mock_vector_search(query, top_k):
-        return ['Alice', 'Bob']
-        
+    from common.config.models.embedding_model_config import EmbeddingModelConfig
+    from common.config.models.milvus_config import MilvusConfig
+    
+    # Mock MilvusClient search
+    sys.modules['pymilvus'] = MagicMock()
+    mock_milvus_client_class = MagicMock()
+    mock_client_instance = mock_milvus_client_class.return_value
+    mock_client_instance.search.return_value = [[{"id": "e1", "entity_title": "Alice"}, {"id": "e2", "entity_title": "Bob"}]]
+    sys.modules['pymilvus'].MilvusClient = mock_milvus_client_class
+    
+    # Mock convert_text_to_vec
+    mock_convert = MagicMock(return_value=([[1.0, 2.0]], []))
+    sys.modules['common.embeddings.client'] = MagicMock()
+    sys.modules['common.embeddings.client'].convert_text_to_vec = mock_convert
+    
     eb = ContextBuilder(
         pd.DataFrame({'id': ['e1', 'e2'], 'title': ['Alice', 'Bob'], 'type':['P','P']}),
         pd.DataFrame(columns=['source', 'target', 'description']),
@@ -70,10 +88,17 @@ def test_local_search():
         pd.DataFrame(columns=['community_id', 'title', 'summary'])
     )
     
+    # 重新导入被 Mock 的依赖后的 Search 模块
+    import importlib
+    import chat.search.local_search
+    importlib.reload(chat.search.local_search)
+    from chat.search.local_search import LocalSearch
+    
     search_engine = LocalSearch(
         llm=DummyLLM(),
         context_builder=eb,
-        vector_search_func=mock_vector_search
+        embedding_config=EmbeddingModelConfig(),
+        milvus_config=MilvusConfig()
     )
     
     res = search_engine.search("Who are Alice and Bob?")
