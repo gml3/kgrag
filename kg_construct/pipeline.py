@@ -10,6 +10,7 @@ import time
 
 from common.config.models.chat_model_config import ChatModelConfig
 from common.config.models.embedding_model_config import EmbeddingModelConfig
+from common.config.models.milvus_config import MilvusConfig
 
 from kg_construct.document_loader import load_documents
 from kg_construct.chunker import create_text_units
@@ -33,8 +34,7 @@ async def run_pipeline(
     chunk_overlap: int = 100,
     entity_types: list[str] | None = None,
     community_max_levels: int = 3,
-    milvus_uri: str = "http://localhost:19530",
-    milvus_db_name: str = "kgrag",
+    milvus_config: MilvusConfig | None = None,
 ) -> dict:
     """执行完整的知识图谱构建 Pipeline。
 
@@ -47,8 +47,7 @@ async def run_pipeline(
         chunk_overlap: 分块重叠 token 数
         entity_types: 实体类型列表
         community_max_levels: 社区最大层级
-        milvus_uri: Milvus 连接地址
-        milvus_db_name: Milvus 数据库名
+        milvus_config: Milvus 配置（None 将使用默认值）
 
     Returns:
         包含各阶段统计信息的 dict
@@ -57,6 +56,11 @@ async def run_pipeline(
         llm_config = ChatModelConfig()
     if embedding_config is None:
         embedding_config = EmbeddingModelConfig()
+    if milvus_config is None:
+        milvus_config = MilvusConfig()
+
+    milvus_uri = f"http://{milvus_config.host}:{milvus_config.port}"
+    milvus_db_name = milvus_config.db_name
 
     total_start = time.time()
     stats = {}

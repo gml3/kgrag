@@ -1,11 +1,12 @@
 """
 Step 8: Embedding 生成与存储
 
-将实体描述向量化并存入 Milvus。
+将实体描述向量化（调用自部署 bge-m3）并存入 Milvus。
 """
 
 import logging
 
+import requests
 from pymilvus import (
     CollectionSchema,
     DataType,
@@ -14,11 +15,40 @@ from pymilvus import (
 )
 
 from common.config.models.embedding_model_config import EmbeddingModelConfig
+from common.config.models.milvus_config import MilvusConfig
 from common.models.entity import Entity
 
 logger = logging.getLogger(__name__)
 
-ENTITY_COLLECTION = "entity_description"
+
+def convert_text_to_vec(
+    text_list: list[str],
+    embedding_config: EmbeddingModelConfig,
+) -> tuple[list[list[float]], list[dict]]:
+    """调用自部署 bge-m3 服务获取稠密和稀疏向量。
+
+    Args:
+        text_list: 文本列表
+        embedding_config: Embedding 配置
+
+    Returns:
+        (dense_vectors, sparse_vectors)
+    """
+    payload = {"sentences": text_list}
+    response = requests.post(
+        embedding_config.api_base,
+        headers=embedding_config.headers,
+        json=payload,
+    )
+    response.raise_for_status()
+
+    resp_data = response.json().get("data", [])
+    data_list = resp_data["data"] if isinstance(resp_data, dict) and "data" in resp_data else resp_data
+
+    dense_vectors = [item["dense_embedding"] for item in data_list]
+    sparse_vectors = [item.get("sparse_embedding", {}) for item in data_list]
+
+    return dense_vectors, sparse_vectors
 
 
 def generate_and_store_embeddings(
@@ -26,7 +56,8 @@ def generate_and_store_embeddings(
     embedding_config: EmbeddingModelConfig,
     milvus_uri: str,
     milvus_db_name: str = "kgrag",
-    collection_name: str = ENTITY_COLLECTION,
+    collection_name: str = "entity_description",
+    batch_size: int = 32,
 ) -> None:
     """为实体生成 Embedding 并存储到 Milvus。
 
@@ -36,33 +67,27 @@ def generate_and_store_embeddings(
         milvus_uri: Milvus 连接地址
         milvus_db_name: Milvus 数据库名
         collection_name: Collection 名称
+        batch_size: 批量处理大小
     """
     if not entities:
         logger.warning("实体列表为空，跳过 Embedding")
         return
 
-    # 1. 生成 Embedding 向量
+    # 1. 分批生成 Embedding 向量
     logger.info(f"开始生成 {len(entities)} 个实体的 Embedding...")
 
-    from litellm import embedding as litellm_embedding
-
     texts = [e.embedding_text for e in entities]
-    vectors: list[list[float]] = []
+    all_dense_vectors: list[list[float]] = []
 
-    # 分批处理
-    batch_size = embedding_config.batch_size
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        response = litellm_embedding(
-            model=embedding_config.model_name,
-            input=batch,
-            api_base=embedding_config.api_base,
-            api_key=embedding_config.api_key,
-        )
-        for item in response.data:
-            vectors.append(item["embedding"])
-
+        dense_vectors, _ = convert_text_to_vec(batch, embedding_config)
+        all_dense_vectors.extend(dense_vectors)
         logger.info(f"Embedding 进度: {min(i + batch_size, len(texts))}/{len(texts)}")
+
+    # 获取向量维度
+    vector_dim = len(all_dense_vectors[0])
+    logger.info(f"向量维度: {vector_dim}")
 
     # 2. 连接 Milvus 并写入
     client = MilvusClient(uri=milvus_uri, db_name=milvus_db_name)
@@ -99,7 +124,7 @@ def generate_and_store_embeddings(
             FieldSchema(
                 name="vector",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=embedding_config.vector_dim,
+                dim=vector_dim,
             ),
         ],
         description="Entity description embeddings",
@@ -119,7 +144,7 @@ def generate_and_store_embeddings(
             "entity_type": entity.type[:128],
             "vector": vector,
         }
-        for entity, vector in zip(entities, vectors)
+        for entity, vector in zip(entities, all_dense_vectors)
     ]
 
     client.insert(collection_name=collection_name, data=data)
