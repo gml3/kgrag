@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 class ChunkingConfig:
     """文档分块配置"""
 
-    chunk_size: int = 300
+    chunk_size: int = 1200
     """每个文本块的 token 数"""
 
     chunk_overlap: int = 100

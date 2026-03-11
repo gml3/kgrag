@@ -11,6 +11,7 @@ import time
 from common.config.models.chat_model_config import ChatModelConfig
 from common.config.models.embedding_model_config import EmbeddingModelConfig
 from common.config.models.milvus_config import MilvusConfig
+from common.config.models.mysql_config import MysqlConfig
 
 from kg_construct.document_loader import load_documents
 from kg_construct.chunker import create_text_units
@@ -188,7 +189,7 @@ async def run_pipeline(
 
 
 def run(
-    input_dir: str = "./data/input",
+    input_dir: str = "./data",
     **kwargs,
 ) -> dict:
     """同步入口，内部使用 asyncio.run 执行 Pipeline。"""
