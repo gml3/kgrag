@@ -73,7 +73,12 @@ async def extract_graph(
                     None, llm.chat, prompt
                 )
                 content = response.output.content
-                result = _parse_llm_output(content)
+                result = _parse_llm_output(
+                    content,
+                    tuple_delimiter,
+                    record_delimiter,
+                    completion_delimiter
+                )
 
                 entities, relationships = _build_models(
                     result, text_unit.id
@@ -101,32 +106,52 @@ async def extract_graph(
     return all_entities, all_relationships
 
 
-def _parse_llm_output(content: str) -> dict:
-    """解析 LLM 输出的 JSON。"""
-    # 尝试提取 JSON 块
-    content = content.strip()
+def _parse_llm_output(
+    content: str,
+    tuple_delimiter: str = "<|>",
+    record_delimiter: str = "##",
+    completion_delimiter: str = "<|COMPLETE|>"
+) -> dict:
+    """解析 LLM 输出的分隔符格式的元组。"""
+    content = content.replace(completion_delimiter, "").strip()
+    records = content.split(record_delimiter)
 
-    # 处理 markdown 代码块包裹
-    if content.startswith("```"):
-        lines = content.split("\n")
-        # 去掉首尾的 ``` 行
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        content = "\n".join(lines)
+    entities = []
+    relationships = []
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        # 尝试找到 JSON 对象
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(content[start:end])
-            except json.JSONDecodeError:
-                pass
-
-        logger.warning(f"无法解析 LLM 输出: {content[:200]}")
-        return {"entities": [], "relationships": []}
+    for record in records:
+        record = record.strip()
+        if not record:
+            continue
+        
+        # 剥离前后的圆括号
+        if record.startswith('(') and record.endswith(')'):
+            record = record[1:-1]
+            
+        parts = [p.strip() for p in record.split(tuple_delimiter)]
+        if not parts:
+            continue
+            
+        type_str = parts[0].strip('"').strip("'").lower()
+            
+        if type_str == "entity" and len(parts) >= 4:
+            entities.append({
+                "name": parts[1].strip('"').strip("'"),
+                "type": parts[2].strip('"').strip("'"),
+                "description": parts[3].strip('"').strip("'")
+            })
+        elif type_str == "relationship" and len(parts) >= 5:
+            relationships.append({
+                "source": parts[1].strip('"').strip("'"),
+                "target": parts[2].strip('"').strip("'"),
+                "description": parts[3].strip('"').strip("'"),
+                "weight": parts[4].strip('"').strip("'")
+            })
+            
+    if not entities and not relationships:
+        logger.warning(f"无法解析或未提取到实体: {content[:200]}")
+        
+    return {"entities": entities, "relationships": relationships}
 
 
 def _build_models(
@@ -148,12 +173,17 @@ def _build_models(
             entities.append(entity)
 
     for r in result.get("relationships", []):
+        try:
+            weight = float(r.get("weight", 1.0))
+        except ValueError:
+            weight = 1.0
+
         rel = Relationship(
             id=str(uuid.uuid4()),
             source=r.get("source", "").strip().upper(),
             target=r.get("target", "").strip().upper(),
             description=r.get("description", ""),
-            weight=float(r.get("weight", 1.0)),
+            weight=weight,
             text_unit_ids=[text_unit_id],
         )
         if rel.source and rel.target:  # 跳过不完整关系
