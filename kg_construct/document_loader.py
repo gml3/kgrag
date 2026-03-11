@@ -65,3 +65,8 @@ def _read_file(file_path: Path) -> str:
 
     else:
         raise ValueError(f"不支持的文件格式: {suffix}")
+
+
+
+if __name__ == "__main__":
+    print(load_documents("./data/input"))

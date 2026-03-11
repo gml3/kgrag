@@ -20,7 +20,7 @@ from kg_construct.graph_finalizer import finalize_graph
 from kg_construct.community_detector import create_communities
 from kg_construct.report_generator import create_community_reports
 from kg_construct.embedding_generator import generate_and_store_embeddings
-from kg_construct.storage_helper import save_parquet
+from kgrag.common.storage.storage_helper import save_parquet
 
 logger = logging.getLogger(__name__)
 

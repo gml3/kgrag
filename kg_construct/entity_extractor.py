@@ -14,37 +14,18 @@ from common.llm.chat_model import LitellmChatModel
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 from common.models.text_unit import TextUnit
+from kg_construct.prompts.extract_graph import GRAPH_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
-
-EXTRACT_PROMPT = """\
-给定以下文本，请提取其中所有的命名实体和它们之间的关系。
-
-实体类型限定为：{entity_types}
-
-文本：
----
-{input_text}
----
-
-请严格按照以下 JSON 格式输出，不要输出任何其他内容：
-{{
-  "entities": [
-    {{"name": "实体名称", "type": "实体类型", "description": "实体的简要描述"}}
-  ],
-  "relationships": [
-    {{"source": "源实体名称", "target": "目标实体名称", "description": "关系描述", "weight": 1}}
-  ]
-}}
-
-如果没有找到任何实体或关系，请返回空列表。
-"""
 
 
 async def extract_graph(
     text_units: list[TextUnit],
     llm_config: ChatModelConfig,
     entity_types: list[str] | None = None,
+    tuple_delimiter: str | None = None,
+    record_delimiter: str | None = None,
+    completion_delimiter: str | None = None
 ) -> tuple[list[Entity], list[Relationship]]:
     """从文本块中并发抽取实体和关系。
 
@@ -57,8 +38,17 @@ async def extract_graph(
         (原始实体列表, 原始关系列表) — 未去重
     """
     if entity_types is None:
-        entity_types = ["PERSON", "ORGANIZATION", "LOCATION", "EVENT"]
+        entity_types = ["人", "组织", "位置", "事件"]
 
+    if tuple_delimiter is None:
+        tuple_delimiter = "<|>"
+        
+    if record_delimiter is None:
+        record_delimiter = "##"
+    
+    if completion_delimiter is None:
+        completion_delimiter = "<|COMPLETE|>"
+        
     entity_types_str = ", ".join(entity_types)
     llm = LitellmChatModel(llm_config)
     semaphore = asyncio.Semaphore(llm_config.concurrent_requests)
@@ -68,9 +58,12 @@ async def extract_graph(
 
     async def _extract_one(text_unit: TextUnit):
         async with semaphore:
-            prompt = EXTRACT_PROMPT.format(
+            prompt = GRAPH_EXTRACTION_PROMPT.format(
                 entity_types=entity_types_str,
                 input_text=text_unit.text,
+                tuple_delimiter=tuple_delimiter,
+                record_delimiter=record_delimiter,
+                completion_delimiter=completion_delimiter
             )
 
             try:
