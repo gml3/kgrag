@@ -11,6 +11,8 @@ from collections import defaultdict
 import networkx as nx
 from graspologic.partition import hierarchical_leiden
 
+from common.config.models.community_config import CommunityConfig
+
 from common.models.community import Community
 from common.models.entity import Entity
 from common.models.relationship import Relationship
@@ -21,16 +23,14 @@ logger = logging.getLogger(__name__)
 def create_communities(
     entities: list[Entity],
     relationships: list[Relationship],
-    max_levels: int = 3,
-    seed: int = 42,
+    config: CommunityConfig,
 ) -> list[Community]:
     """执行 Leiden 算法发现层级社区结构。
 
     Args:
         entities: 实体列表
         relationships: 关系列表
-        max_levels: 最大层级数
-        seed: 随机种子
+        config: 社区发现配置
 
     Returns:
         Community 列表（多层级）
@@ -52,7 +52,8 @@ def create_communities(
         return []
 
     # 2. 执行 hierarchical Leiden
-    community_map = hierarchical_leiden(G, max_cluster_size=10, random_seed=seed)
+    community_map = hierarchical_leiden(G, max_cluster_size=config.max_cluster_size, 
+                                        random_seed=config.seed)
 
     # 3. 按 level 整理结果
     # community_map 返回 list of CommunityMapping(node, cluster, level, ...)
@@ -64,7 +65,7 @@ def create_communities(
         node = mapping.node
         cluster = mapping.cluster
         level = mapping.level
-        if level < max_levels:
+        if level < config.max_levels:
             level_clusters[level][cluster].append(node)
 
     # 4. 构建 Community 对象

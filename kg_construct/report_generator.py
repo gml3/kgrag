@@ -10,30 +10,14 @@ import uuid
 
 from common.config.models.chat_model_config import ChatModelConfig
 from common.llm.chat_model import LitellmChatModel
+
 from common.models.community import Community, CommunityReport
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 
+from common.prompts.community_report import COMMUNITY_REPORT_PROMPT
+
 logger = logging.getLogger(__name__)
-
-COMMUNITY_REPORT_PROMPT = """\
-以下是一个社区（主题聚类）中的实体和关系信息。请为这个社区生成一份摘要报告。
-
-## 社区内的实体：
-{community_entities}
-
-## 社区内的关系：
-{community_relationships}
-
-请按照以下 JSON 格式输出：
-{{
-  "title": "社区报告标题（概括核心主题）",
-  "summary": "2-3句话的摘要",
-  "full_content": "详细描述社区内的核心实体、它们之间的关系和主要主题"
-}}
-
-请直接输出 JSON，不要输出其他内容。
-"""
 
 
 async def create_community_reports(

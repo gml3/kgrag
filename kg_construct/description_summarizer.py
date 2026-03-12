@@ -1,6 +1,9 @@
 """
 Step 4: 描述合并去重
 
+在 step3 用大模型提取实体、关系之后，此时得到了原始的实体，但是其中可能会有很多同名的实体，
+因此需要对同名实体的描述进行合并，生成新的实体描述
+
 将同名实体和相同 (source, target) 关系的描述合并。
 """
 
@@ -10,30 +13,24 @@ import uuid
 from collections import defaultdict
 
 from common.config.models.chat_model_config import ChatModelConfig
+from common.config.models.description_summarizer_config import (
+    DescriptionSummarizerConfig,
+)
 from common.llm.chat_model import LitellmChatModel
+
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 
+from common.prompts.summarize_descriptions import SUMMARIZE_PROMPT
+
 logger = logging.getLogger(__name__)
-
-SUMMARIZE_PROMPT = """\
-以下是关于同一个主题的多段描述，请将它们合并为一段简洁、完整的描述。
-保留所有关键信息，去除重复内容。
-
-描述列表：
-{descriptions}
-
-请直接输出合并后的描述，不要输出其他内容。
-"""
-
-# 描述数量低于此阈值时，直接拼接而不调用 LLM
-CONCAT_THRESHOLD = 2
 
 
 async def summarize_descriptions(
     raw_entities: list[Entity],
     raw_relationships: list[Relationship],
     llm_config: ChatModelConfig,
+    description_summarizer_config: DescriptionSummarizerConfig,
 ) -> tuple[list[Entity], list[Relationship]]:
     """合并去重实体和关系的描述。
 
@@ -46,10 +43,11 @@ async def summarize_descriptions(
         (去重后的实体列表, 去重后的关系列表)
     """
     llm = LitellmChatModel(llm_config)
+    concat_threshold = description_summarizer_config.concat_threshold
     semaphore = asyncio.Semaphore(llm_config.concurrent_requests)
 
-    entities = await _merge_entities(raw_entities, llm, semaphore)
-    relationships = await _merge_relationships(raw_relationships, llm, semaphore)
+    entities = await _merge_entities(raw_entities, llm, concat_threshold, semaphore)
+    relationships = await _merge_relationships(raw_relationships, llm, concat_threshold, semaphore)
 
     logger.info(
         f"合并完成: {len(raw_entities)} → {len(entities)} 实体, "
@@ -61,6 +59,7 @@ async def summarize_descriptions(
 async def _merge_entities(
     raw_entities: list[Entity],
     llm: LitellmChatModel,
+    concat_threshold: int,
     semaphore: asyncio.Semaphore,
 ) -> list[Entity]:
     """按 title 分组合并实体。"""
@@ -78,7 +77,7 @@ async def _merge_entities(
             entity.id = str(uuid.uuid4())
             merged.append(entity)
         else:
-            tasks.append(_merge_entity_group(title, group, llm, semaphore))
+            tasks.append(_merge_entity_group(title, group, llm, concat_threshold, semaphore))
 
     if tasks:
         results = await asyncio.gather(*tasks)
@@ -91,6 +90,7 @@ async def _merge_entity_group(
     title: str,
     group: list[Entity],
     llm: LitellmChatModel,
+    concat_threshold: int,
     semaphore: asyncio.Semaphore,
 ) -> Entity:
     """合并同名实体组。"""
@@ -103,7 +103,7 @@ async def _merge_entity_group(
     types = [e.type for e in group if e.type]
     entity_type = max(set(types), key=types.count) if types else ""
 
-    if len(descriptions) <= CONCAT_THRESHOLD:
+    if len(descriptions) <= concat_threshold:
         merged_desc = "; ".join(descriptions)
     else:
         merged_desc = await _llm_summarize(descriptions, llm, semaphore)
@@ -120,6 +120,7 @@ async def _merge_entity_group(
 async def _merge_relationships(
     raw_relationships: list[Relationship],
     llm: LitellmChatModel,
+    concat_threshold: int,
     semaphore: asyncio.Semaphore,
 ) -> list[Relationship]:
     """按 (source, target) 分组合并关系。"""
@@ -138,7 +139,7 @@ async def _merge_relationships(
             merged.append(rel)
         else:
             tasks.append(
-                _merge_relationship_group(source, target, group, llm, semaphore)
+                _merge_relationship_group(source, target, group, llm, concat_threshold, semaphore)
             )
 
     if tasks:
@@ -153,6 +154,7 @@ async def _merge_relationship_group(
     target: str,
     group: list[Relationship],
     llm: LitellmChatModel,
+    concat_threshold: int,
     semaphore: asyncio.Semaphore,
 ) -> Relationship:
     """合并同一对 source-target 的关系。"""
@@ -162,7 +164,7 @@ async def _merge_relationship_group(
     for r in group:
         all_text_unit_ids.extend(r.text_unit_ids)
 
-    if len(descriptions) <= CONCAT_THRESHOLD:
+    if len(descriptions) <= concat_threshold:
         merged_desc = "; ".join(descriptions)
     else:
         merged_desc = await _llm_summarize(descriptions, llm, semaphore)

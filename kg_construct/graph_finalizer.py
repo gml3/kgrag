@@ -3,6 +3,11 @@ Step 5: 图定稿
 
 使用 NetworkX 计算实体 rank（degree）和关系 rank（combined_degree），
 并将 entity_ids/relationship_ids 反向关联到 text_units。
+
+作用：
+1.量化权重（Rank）：通过分析图的拓扑结构，算出哪些实体是“大咖”（核心节点），哪些是“龙套”（边缘节点）。
+2.打通血脉（反向索引）：让原始文本块（TextUnit）反向关联到它包含的实体 ID。
+这样在搜索时，只要找到了实体，就能瞬间定位到产生它的原文证据。
 """
 
 import logging
@@ -31,7 +36,7 @@ def finalize_graph(
     Returns:
         (更新后的 entities, relationships, text_units)
     """
-    # 1. 构建 NetworkX 图，计算 degree
+    # 1. 构建 NetworkX 图，计算 degree（在图论中，一个节点的 Degree 指的是与这个节点直接连通的边的数量）
     G = nx.Graph()
 
     entity_by_title: dict[str, Entity] = {}

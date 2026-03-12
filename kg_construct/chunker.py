@@ -9,20 +9,19 @@ import uuid
 
 import tiktoken
 
+from common.config.models.tokenizer_config import TokenizerConfig
+from common.config.models.chunk_config import ChunkingConfig
+
 from common.models.document import Document
 from common.models.text_unit import TextUnit
 
 logger = logging.getLogger(__name__)
 
-# 默认使用 cl100k_base 编码（GPT-4/3.5 同款，通用性好）
-DEFAULT_ENCODING = "cl100k_base"
-
 
 def create_text_units(
+    chunking_config: ChunkingConfig,
+    tokenizer_config: TokenizerConfig,
     documents: list[Document],
-    chunk_size: int = 300,
-    chunk_overlap: int = 100,
-    encoding_name: str = DEFAULT_ENCODING,
 ) -> list[TextUnit]:
     """将文档列表切分为文本块。
 
@@ -30,22 +29,21 @@ def create_text_units(
 
     Args:
         documents: 文档列表
-        chunk_size: 每个文本块的最大 token 数
-        chunk_overlap: 相邻文本块的重叠 token 数
-        encoding_name: tiktoken 编码名称
+        chunking_config: 分块配置
+        tokenizer_config: 分词器配置
 
     Returns:
         TextUnit 列表
     """
-    encoder = tiktoken.get_encoding(encoding_name)
+    encoder = tiktoken.get_encoding(tokenizer_config.encoding_name)
     all_text_units: list[TextUnit] = []
 
     for doc in documents:
         chunks = _split_by_tokens(
             text=doc.raw_content,
             encoder=encoder,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+            chunk_size=chunking_config.chunk_size,
+            chunk_overlap=chunking_config.chunk_overlap,
         )
 
         for chunk_text, n_tokens in chunks:

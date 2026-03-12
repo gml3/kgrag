@@ -8,11 +8,10 @@ import asyncio
 import logging
 import time
 
-from common.config.models.chat_model_config import ChatModelConfig
-from common.config.models.embedding_model_config import EmbeddingModelConfig
-from common.config.models.milvus_config import MilvusConfig
-from common.config.models.mysql_config import MysqlConfig
+# 配置
+from common.config.models.kg_construct_config import KGConstructConfig
 
+# 工作流
 from kg_construct.document_loader import load_documents
 from kg_construct.chunker import create_text_units
 from kg_construct.entity_extractor import extract_graph
@@ -21,52 +20,20 @@ from kg_construct.graph_finalizer import finalize_graph
 from kg_construct.community_detector import create_communities
 from kg_construct.report_generator import create_community_reports
 from kg_construct.embedding_generator import generate_and_store_embeddings
+
+# 存储类
 from common.storage.mysql_storage import MysqlStorage
 
 logger = logging.getLogger(__name__)
 
 
-async def run_pipeline(
-    input_dir: str,
-    llm_config: ChatModelConfig | None = None,
-    embedding_config: EmbeddingModelConfig | None = None,
-    chunk_size: int = 300,
-    chunk_overlap: int = 100,
-    entity_types: list[str] | None = None,
-    community_max_levels: int = 3,
-    milvus_config: MilvusConfig | None = None,
-    mysql_config: MysqlConfig | None = None,
+async def kg_construct_pipeline(
+    config: KGConstructConfig,
 ) -> dict:
-    """执行完整的知识图谱构建 Pipeline。
-
-    Args:
-        input_dir: 原始文档输入目录
-        llm_config: Chat LLM 配置（None 将使用默认值）
-        embedding_config: Embedding 配置（None 将使用默认值）
-        chunk_size: 分块 token 数
-        chunk_overlap: 分块重叠 token 数
-        entity_types: 实体类型列表
-        community_max_levels: 社区最大层级
-        milvus_config: Milvus 配置（None 将使用默认值）
-        mysql_config: Mysql 配置（None 将使用默认值）
-
-    Returns:
-        包含各阶段统计信息的 dict
-    """
-    if llm_config is None:
-        llm_config = ChatModelConfig()
-    if embedding_config is None:
-        embedding_config = EmbeddingModelConfig()
-    if milvus_config is None:
-        milvus_config = MilvusConfig()
-    if mysql_config is None:
-        mysql_config = MysqlConfig()
-
-    milvus_uri = f"http://{milvus_config.host}:{milvus_config.port}"
-    milvus_db_name = milvus_config.db_name
+    """执行完整的知识图谱构建 Pipeline"""
 
     # 初始化 MySQL 存储服务
-    mysql_storage = MysqlStorage(mysql_config)
+    mysql_storage = MysqlStorage(config.mysql)
 
     total_start = time.time()
     stats = {}
@@ -77,7 +44,7 @@ async def run_pipeline(
     logger.info("=" * 50)
     logger.info("Step 1/8: 文档加载")
     t0 = time.time()
-    documents = load_documents(input_dir)
+    documents = load_documents(config.documentloader)
     mysql_storage.save(documents, "documents")
     stats["documents"] = len(documents)
     logger.info(f"Step 1 完成 ({time.time() - t0:.1f}s)")
@@ -92,7 +59,7 @@ async def run_pipeline(
     logger.info("=" * 50)
     logger.info("Step 2/8: 文档分块")
     t0 = time.time()
-    text_units = create_text_units(documents, chunk_size, chunk_overlap)
+    text_units = create_text_units(config.chunking, config.tokenizer, documents)
     stats["text_units"] = len(text_units)
     logger.info(f"Step 2 完成 ({time.time() - t0:.1f}s)")
 
@@ -103,7 +70,7 @@ async def run_pipeline(
     logger.info("Step 3/8: 实体关系抽取 (LLM)")
     t0 = time.time()
     raw_entities, raw_relationships = await extract_graph(
-        text_units, llm_config, entity_types
+        text_units, config.chat_model, config.entity_extractor
     )
     stats["raw_entities"] = len(raw_entities)
     stats["raw_relationships"] = len(raw_relationships)
@@ -120,7 +87,7 @@ async def run_pipeline(
     logger.info("Step 4/8: 描述合并去重 (LLM)")
     t0 = time.time()
     entities, relationships = await summarize_descriptions(
-        raw_entities, raw_relationships, llm_config
+        raw_entities, raw_relationships, config.chat_model, config.description_summarizer
     )
     stats["entities"] = len(entities)
     stats["relationships"] = len(relationships)
@@ -147,7 +114,7 @@ async def run_pipeline(
     logger.info("Step 6/8: 社区发现 (Leiden)")
     t0 = time.time()
     communities = create_communities(
-        entities, relationships, max_levels=community_max_levels
+        entities, relationships, config.community_detector
     )
     mysql_storage.save(communities, "communities")
     stats["communities"] = len(communities)
@@ -160,7 +127,7 @@ async def run_pipeline(
     logger.info("Step 7/8: 社区报告生成 (LLM)")
     t0 = time.time()
     community_reports = await create_community_reports(
-        communities, entities, relationships, llm_config
+        communities, entities, relationships, config.chat_model
     )
     mysql_storage.save(community_reports, "community_reports")
     stats["community_reports"] = len(community_reports)
@@ -173,7 +140,7 @@ async def run_pipeline(
     logger.info("Step 8/8: Embedding 生成与存储")
     t0 = time.time()
     generate_and_store_embeddings(
-        entities, embedding_config, milvus_uri, milvus_db_name
+        entities, config.embedding, config.milvus
     )
     logger.info(f"Step 8 完成 ({time.time() - t0:.1f}s)")
 

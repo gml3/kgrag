@@ -8,25 +8,26 @@ import logging
 import uuid
 from pathlib import Path
 
+from common.config.models.document_loader_config import DocumentLoaderConfig
 from common.models.document import Document
 
 logger = logging.getLogger(__name__)
 
 
-def load_documents(input_dir: str) -> list[Document]:
+def load_documents(config: DocumentLoaderConfig) -> list[Document]:
     """从输入目录加载所有支持格式的文档。
 
     Args:
-        input_dir: 原始文档所在目录路径
+        config: DocumentLoaderConfig 配置
 
     Returns:
         Document 列表
     """
-    input_path = Path(input_dir)
+    input_path = Path(config.input_dir)
     if not input_path.exists():
-        raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+        raise FileNotFoundError(f"输入目录不存在: {config.input_dir}")
 
-    supported_extensions = {".txt", ".csv", ".json"}
+    supported_extensions = config.supported_extensions
     documents: list[Document] = []
 
     for file_path in sorted(input_path.iterdir()):

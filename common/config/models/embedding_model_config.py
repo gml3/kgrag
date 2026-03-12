@@ -16,3 +16,5 @@ class EmbeddingModelConfig:
         "accept": "application/json",
         "Content-Type": "application/json",
     })
+    
+    batch_size: int = 32

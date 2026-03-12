@@ -27,25 +27,24 @@ from common.embeddings.client import convert_text_to_vec
 def generate_and_store_embeddings(
     entities: list[Entity],
     embedding_config: EmbeddingModelConfig,
-    milvus_uri: str,
-    milvus_db_name: str = "kgrag",
-    collection_name: str = "entity_description",
-    batch_size: int = 32,
+    milvus_config: MilvusConfig,
 ) -> None:
     """为实体生成 Embedding 并存储到 Milvus。
 
     Args:
         entities: 实体列表
         embedding_config: Embedding 模型配置
-        milvus_uri: Milvus 连接地址
-        milvus_db_name: Milvus 数据库名
-        collection_name: Collection 名称
-        batch_size: 批量处理大小
+        milvus_config: Milvus 配置
     """
     if not entities:
         logger.warning("实体列表为空，跳过 Embedding")
         return
 
+    batch_size = embedding_config.batch_size
+    milvus_uri = f"http://{milvus_config.host}:{milvus_config.port}"
+    milvus_db_name = milvus_config.db_name
+    collection_name = milvus_config.collection_name
+    
     # 1. 分批生成 Embedding 向量
     logger.info(f"开始生成 {len(entities)} 个实体的 Embedding...")
 

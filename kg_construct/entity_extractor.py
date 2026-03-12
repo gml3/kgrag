@@ -9,12 +9,17 @@ import json
 import logging
 import uuid
 
+# 所需配置
 from common.config.models.chat_model_config import ChatModelConfig
 from common.llm.chat_model import LitellmChatModel
+from common.config.models.entity_extractor_config import EntityExtractorConfig
+
+# 数据类型
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 from common.models.text_unit import TextUnit
-from kg_construct.prompts.extract_graph import GRAPH_EXTRACTION_PROMPT
+
+from common.prompts.extract_graph import GRAPH_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -22,34 +27,20 @@ logger = logging.getLogger(__name__)
 async def extract_graph(
     text_units: list[TextUnit],
     llm_config: ChatModelConfig,
-    entity_types: list[str] | None = None,
-    tuple_delimiter: str | None = None,
-    record_delimiter: str | None = None,
-    completion_delimiter: str | None = None
+    entity_extractor_config: EntityExtractorConfig,
 ) -> tuple[list[Entity], list[Relationship]]:
     """从文本块中并发抽取实体和关系。
 
     Args:
         text_units: 文本块列表
         llm_config: LLM 配置
-        entity_types: 实体类型列表
+        entity_extractor_config: 实体抽取配置
 
     Returns:
         (原始实体列表, 原始关系列表) — 未去重
     """
-    if entity_types is None:
-        entity_types = ["人", "组织", "位置", "事件"]
-
-    if tuple_delimiter is None:
-        tuple_delimiter = "<|>"
         
-    if record_delimiter is None:
-        record_delimiter = "##"
-    
-    if completion_delimiter is None:
-        completion_delimiter = "<|COMPLETE|>"
-        
-    entity_types_str = ", ".join(entity_types)
+    entity_types_str = ", ".join(entity_extractor_config.entity_types)
     llm = LitellmChatModel(llm_config)
     semaphore = asyncio.Semaphore(llm_config.concurrent_requests)
 
@@ -61,9 +52,9 @@ async def extract_graph(
             prompt = GRAPH_EXTRACTION_PROMPT.format(
                 entity_types=entity_types_str,
                 input_text=text_unit.text,
-                tuple_delimiter=tuple_delimiter,
-                record_delimiter=record_delimiter,
-                completion_delimiter=completion_delimiter
+                tuple_delimiter=entity_extractor_config.tuple_delimiter,
+                record_delimiter=entity_extractor_config.record_delimiter,
+                completion_delimiter=entity_extractor_config.completion_delimiter
             )
 
             try:
@@ -75,9 +66,9 @@ async def extract_graph(
                 content = response.output.content
                 result = _parse_llm_output(
                     content,
-                    tuple_delimiter,
-                    record_delimiter,
-                    completion_delimiter
+                    entity_extractor_config.tuple_delimiter,
+                    entity_extractor_config.record_delimiter,
+                    entity_extractor_config.completion_delimiter
                 )
 
                 entities, relationships = _build_models(
