@@ -100,8 +100,8 @@ def _parse_report(content: str, community: Community) -> CommunityReport:
     import json
 
     # 清理 markdown 包裹
-    if content.startswith("```"):
-        lines = content.split("\n")
+    if content.strip().startswith("```"):
+        lines = content.strip().split("\n")
         lines = [l for l in lines if not l.strip().startswith("```")]
         content = "\n".join(lines)
 
@@ -109,14 +109,26 @@ def _parse_report(content: str, community: Community) -> CommunityReport:
         start = content.find("{")
         end = content.rfind("}") + 1
         data = json.loads(content[start:end])
-    except (json.JSONDecodeError, ValueError):
+        
+        # 将 findings 转换为字符串存入 full_content
+        findings_texts = []
+        for f in data.get("findings", []):
+            findings_texts.append(f"### {f.get('summary')}\n{f.get('explanation')}")
+        
+        full_content = (
+            f"Rating: {data.get('rating')}\n"
+            f"Rating Explanation: {data.get('rating_explanation')}\n\n"
+            + "\n\n".join(findings_texts)
+        )
+    except (json.JSONDecodeError, ValueError, Exception):
         # 如果解析失败，把整个内容作为 full_content
-        data = {"title": "社区报告", "summary": "", "full_content": content}
+        data = {"title": "社区报告", "summary": ""}
+        full_content = content
 
     return CommunityReport(
         id=str(uuid.uuid4()),
         community_id=community.id,
         title=data.get("title", ""),
         summary=data.get("summary", ""),
-        full_content=data.get("full_content", ""),
+        full_content=full_content,
     )

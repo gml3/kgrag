@@ -106,7 +106,7 @@ async def _merge_entity_group(
     if len(descriptions) <= concat_threshold:
         merged_desc = "; ".join(descriptions)
     else:
-        merged_desc = await _llm_summarize(descriptions, llm, semaphore)
+        merged_desc = await _llm_summarize(title, descriptions, llm, semaphore)
 
     return Entity(
         id=str(uuid.uuid4()),
@@ -167,7 +167,8 @@ async def _merge_relationship_group(
     if len(descriptions) <= concat_threshold:
         merged_desc = "; ".join(descriptions)
     else:
-        merged_desc = await _llm_summarize(descriptions, llm, semaphore)
+        rel_name = f"{source} -> {target}"
+        merged_desc = await _llm_summarize(rel_name, descriptions, llm, semaphore)
 
     return Relationship(
         id=str(uuid.uuid4()),
@@ -180,6 +181,7 @@ async def _merge_relationship_group(
 
 
 async def _llm_summarize(
+    entity_name: str,
     descriptions: list[str],
     llm: LitellmChatModel,
     semaphore: asyncio.Semaphore,
@@ -189,7 +191,10 @@ async def _llm_summarize(
         numbered = "\n".join(
             f"{i + 1}. {desc}" for i, desc in enumerate(descriptions)
         )
-        prompt = SUMMARIZE_PROMPT.format(descriptions=numbered)
+        prompt = SUMMARIZE_PROMPT.format(
+            entity_name=entity_name,
+            description_list=numbered
+        )
 
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, llm.chat, prompt)
