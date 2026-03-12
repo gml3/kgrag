@@ -140,7 +140,7 @@ async def kg_construct_pipeline(
     logger.info("Step 8/8: Embedding 生成与存储")
     t0 = time.time()
     generate_and_store_embeddings(
-        entities, config.embedding, config.milvus
+        entities, config.embedding_model, config.milvus
     )
     logger.info(f"Step 8 完成 ({time.time() - t0:.1f}s)")
 
@@ -155,13 +155,12 @@ async def kg_construct_pipeline(
     return stats
 
 
-def run(
-    input_dir: str = "./data",
-    **kwargs,
-) -> dict:
+def run(config: KGConstructConfig | None = None) -> dict:
     """同步入口，内部使用 asyncio.run 执行 Pipeline。"""
+    if config is None:
+        config = KGConstructConfig()
     return asyncio.run(
-        run_pipeline(input_dir=input_dir, **kwargs)
+        kg_construct_pipeline(config=config)
     )
 
 
