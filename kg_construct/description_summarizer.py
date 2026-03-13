@@ -21,7 +21,7 @@ from common.llm.chat_model import LitellmChatModel
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 
-from common.prompts.summarize_descriptions import SUMMARIZE_PROMPT
+from common.prompts.kg_construct.summarize_descriptions import SUMMARIZE_PROMPT
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@ from common.models.entity import Entity
 from common.models.relationship import Relationship
 from common.models.text_unit import TextUnit
 
-from common.prompts.extract_graph import GRAPH_EXTRACTION_PROMPT
+from common.prompts.kg_construct.extract_graph import GRAPH_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 

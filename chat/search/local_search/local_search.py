@@ -3,9 +3,15 @@ from typing import Any, List, Optional
 import pandas as pd
 
 from chat.search.base import BaseSearch
-from chat.context_builder import ContextBuilder
+
+from common.config.models.local_search_config import LocalSearchConfig
+from common.storage.milvus_storage import MilvusStorage
+from common.storage.mysql_storage import MysqlStorage
+
 from common.llm.chat_model import LitellmChatModel
-from pymilvus import MilvusClient
+
+from chat.search.local_search.context_builder import ContextBuilder
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,57 +19,43 @@ class LocalSearch(BaseSearch):
     """
     Local Search 实现。
     直接将 User Query 发送至 Embedding 接口将其向量化，
-    利用内置的 MilvusClient 在向量库检索 Top-K 实体，提取其 id。
-    然后去知识图谱存储中提取该实体的社区报告、关系、文本库组装混合上下文交由 LLM 回答。
+    利用 MilvusStorage 在向量库检索 Top-K 实体，提取其 id。
+    然后去 MySQL 存储中提取该实体的社区报告、关系、文本库组装混合上下文交由 LLM 回答。
     """
 
     def __init__(
         self,
         llm: LitellmChatModel,
-        context_builder: ContextBuilder,
-        embedding_config: "EmbeddingModelConfig",
-        milvus_config: "MilvusConfig",
-        collection_name: str = "entity_description",
-        system_prompt: Optional[str] = None,
-        max_tokens: int = 12000,
+        config: LocalSearchConfig,
         **kwargs: Any
     ):
         super().__init__(llm, **kwargs)
-        self.context_builder = context_builder
-        self.embedding_config = embedding_config
-        self.milvus_config = milvus_config
-        self.collection_name = collection_name
+        self.config = config
         
-        # 建立 Milvus 长连接
-        self.milvus_client = MilvusClient(
-            uri=f"http://{self.milvus_config.host}:{self.milvus_config.port}",
-            db_name=self.milvus_config.db_name
+        # 初始化存储服务
+        self.milvus_storage = MilvusStorage(self.config.milvus)
+        self.mysql_storage = MysqlStorage(self.config.mysql)
+        
+        # 从 MySQL 将知识图谱全量加载至内存 Pandas (以供 ContextBuilder 抽取使用)
+        entities_df = self.mysql_storage.read_df("entities")
+        relationships_df = self.mysql_storage.read_df("relationships")
+        text_units_df = self.mysql_storage.read_df("text_units")
+        community_reports_df = self.mysql_storage.read_df("community_reports")
+        
+        self.context_builder = ContextBuilder(
+            entities_df, relationships_df, text_units_df, community_reports_df
         )
         
-        if system_prompt is None:
-            prompt_path = pd.io.common.Path(__file__).parent.parent / "prompts" / "local_search_system.txt"
-            if prompt_path.exists():
-                with open(prompt_path, "r", encoding="utf-8") as f:
-                    self.system_prompt = f.read()
-            else:
-                self.system_prompt = (
-                    "你是一个基于知识图谱数据回答问题的助手。\n"
-                    "请基于以下提供的数据表上下文回答问题。在可能的情况下，提供数据引用（例如：[Data: Entities (id); Sources (id)]）。\n\n"
-                    "=== 上下文数据 ===\n"
-                    "{context_data}\n"
-                    "================\n"
-                )
-        else:
-            self.system_prompt = system_prompt
-            
-        self.max_tokens = max_tokens
+        self.system_prompt = self.config.system_prompt
+        self.max_tokens = self.config.max_tokens
+        self.top_k = self.config.top_k
 
-    def search(self, query: str, top_k: int = 10, **kwargs: Any) -> Any:
+    def search(self, query: str, **kwargs: Any) -> Any:
         from common.embeddings.client import convert_text_to_vec
         
         # 1. 向量化 query
         try:
-            dense_vectors, _ = convert_text_to_vec([query], self.embedding_config)
+            dense_vectors, _ = convert_text_to_vec([query], self.config.embedding_model)
             query_vector = dense_vectors[0]
         except Exception as e:
             logger.error(f"Failed to generate embedding for query: {e}")
@@ -71,10 +63,10 @@ class LocalSearch(BaseSearch):
 
         # 2. 检索 Milvus 实体
         try:
-            search_res = self.milvus_client.search(
-                collection_name=self.collection_name,
+            search_res = self.milvus_storage.search(
+                collection_name=self.config.collection_name,
                 data=[query_vector],
-                limit=top_k,
+                limit=self.top_k,
                 output_fields=["id", "entity_title"]
             )
         except Exception as e:

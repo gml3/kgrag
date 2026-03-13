@@ -15,7 +15,7 @@ from common.models.community import Community, CommunityReport
 from common.models.entity import Entity
 from common.models.relationship import Relationship
 
-from common.prompts.community_report import COMMUNITY_REPORT_PROMPT
+from common.prompts.kg_construct.community_report import COMMUNITY_REPORT_PROMPT
 
 logger = logging.getLogger(__name__)
 
