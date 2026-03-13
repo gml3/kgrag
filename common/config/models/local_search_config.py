@@ -30,7 +30,7 @@ class LocalSearchConfig:
     mysql: MysqlConfig = field(default_factory=MysqlConfig)
     """MySQL 配置"""
 
-    collection_name: str = "entity_description"
+    collection_name: str = "kgrag"
     """Milvus 集合名称"""
 
     max_tokens: int = 12000
