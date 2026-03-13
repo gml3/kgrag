@@ -42,22 +42,23 @@ class ContextBuilder:
         
         # 找到这些实体属于哪些社区
         matched_rows = self.entities[self.entities['title'].isin(entities) | self.entities['id'].isin(entities)]
-        print(f"DEBUG Entities matched: {matched_rows}")
         community_ids = set()
         for c_ids in matched_rows['community_ids'].dropna():
             if isinstance(c_ids, str):
-                import ast
+                import json
                 try:
-                    c_ids = ast.literal_eval(c_ids)
+                    # 优先使用 json 解析，因为 MySQL 存储的是 json.dumps 后的结果
+                    c_ids = json.loads(c_ids)
                 except:
-                    c_ids = []
+                    import ast
+                    try:
+                        c_ids = ast.literal_eval(c_ids)
+                    except:
+                        c_ids = []
             if isinstance(c_ids, list):
                 community_ids.update(c_ids)
                 
-        print(f"DEBUG community_ids: {community_ids}")
-        print(f"DEBUG self.reports: {self.reports}")
         reports = self.reports[self.reports['community_id'].isin(list(community_ids))]
-        print(f"DEBUG reports: {reports}")
         # 可以按 rank 排序
         if 'rank' in reports.columns:
             reports = reports.sort_values(by='rank', ascending=False)
@@ -121,11 +122,15 @@ class ContextBuilder:
         text_unit_ids = set()
         for t_ids in matched_entities['text_unit_ids'].dropna():
             if isinstance(t_ids, str):
-                import ast
+                import json
                 try:
-                    t_ids = ast.literal_eval(t_ids)
+                    t_ids = json.loads(t_ids)
                 except:
-                    t_ids = []
+                    import ast
+                    try:
+                        t_ids = ast.literal_eval(t_ids)
+                    except:
+                        t_ids = []
             if isinstance(t_ids, list):
                 text_unit_ids.update(t_ids)
                 

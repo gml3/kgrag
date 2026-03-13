@@ -89,7 +89,11 @@ class LocalSearch(BaseSearch):
         )
 
         # 4. 拼装 prompt
-        prompt = self.system_prompt.format(context_data=context_data)
+        response_type = kwargs.get("response_type", "multiple paragraphs")
+        prompt = self.system_prompt.format(
+            context_data=context_data,
+            response_type=response_type
+        )
         
         # 5. LLM 生成
         history = kwargs.get("history", [])

@@ -116,6 +116,8 @@ async def kg_construct_pipeline(
     communities = create_communities(
         entities, relationships, config.community_detector
     )
+    # 更新存储中实体的社区 ID 关联
+    mysql_storage.save(entities, "entities", if_exists="replace")
     mysql_storage.save(communities, "communities")
     stats["communities"] = len(communities)
     logger.info(f"Step 6 完成 ({time.time() - t0:.1f}s)")
